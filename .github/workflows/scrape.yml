@@ -15,12 +15,18 @@ jobs:
         with:
           node-version: '20.18.1'
 
-      # install deps from your repo's package.json
       - run: npm ci
 
-      - name: Run scraper
+      - name: Craigslist (best-effort; ignore failure)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE: ${{ secrets.SUPABASE_SERVICE_ROLE }}
           CITY: Calhoun
-        run: node scripts/scrape_craigslist.mjs
+        run: node scripts/scrape_craigslist.mjs || echo "craigslist blocked; continuing"
+
+      - name: OfferUp (primary)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE: ${{ secrets.SUPABASE_SERVICE_ROLE }}
+          CITY: Calhoun
+        run: node scripts/scrape_offerup.mjs
