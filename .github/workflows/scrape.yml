@@ -26,7 +26,7 @@ jobs:
       - name: Install deps
         run: npm ci
 
-      # Craigslist often blocks; we try but don't fail the whole job
+      # Craigslist often blocks; try but don't fail the job
       - name: Craigslist (best-effort; ignore failure)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -42,10 +42,17 @@ jobs:
           CITY: Calhoun
         run: node scripts/scrape_offerup.mjs
 
-      # eBay RSS as secondary; don't fail the job if eBay flakes
-      - name: eBay RSS (secondary)
+      # eBay as secondary; item-page fetch
+      - name: eBay (secondary)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE: ${{ secrets.SUPABASE_SERVICE_ROLE }}
           CITY: Calhoun
         run: node scripts/scrape_ebay.mjs || echo "ebay failed; continuing"
+
+      # 🔧 Normalize titles into structured fields
+      - name: Normalize listings (material/shape/thickness)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE: ${{ secrets.SUPABASE_SERVICE_ROLE }}
+        run: node scripts/normalize_listings.mjs
