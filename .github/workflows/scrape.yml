@@ -25,7 +25,7 @@ jobs:
 
       - name: Run scraper
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE: ${{ secrets.SUPABASE_SERVICE_ROLE }}
+          SUPABASE_URL: ${{ secrets.https://wmwubcecarfkzkxtfdob.supabase.co }}
+          SUPABASE_SERVICE_ROLE: ${{ secrets.eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indtd3ViY2VjYXJma3preHRmZG9iIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NjY1MzQwMywiZXhwIjoyMDcyMjI5NDAzfQ.BioWgtfyoFTzHt64uOSa5oRSq25HtVCMAdBTiQ09ofg }}
           CITY: Calhoun
         run: node scripts/scrape_craigslist.mjs
