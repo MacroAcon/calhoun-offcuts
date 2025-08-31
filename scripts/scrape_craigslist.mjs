@@ -1,12 +1,15 @@
 // scripts/scrape_craigslist.mjs
-import Parser from 'rss-parser';
 import crypto from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 
-const FEED_URL = 'https://nwga.craigslist.org/search/maa?format=rss';
+// Your feed
+const RSS_URL = 'https://nwga.craigslist.org/search/maa?format=rss';
 
-const SUPABASE_URL = process.env.SUPABASE_URL;            // set in GitHub Secrets
-const SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE; // set in GitHub Secrets
+// Public RSS→JSON gateway (free, rate-limited). You can swap to another later.
+const GATEWAY = 'https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(RSS_URL);
+
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const CITY = process.env.CITY || 'Calhoun';
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE) {
@@ -16,35 +19,33 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE);
 
-async function fetchRss() {
-  // try direct with browser-like headers; if blocked, throw (we’ll still run on Actions IPs)
-  const res = await fetch(FEED_URL, {
+async function run() {
+  const res = await fetch(GATEWAY, {
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-      'Accept': 'application/rss+xml,text/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Referer': 'https://nwga.craigslist.org/search/maa',
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari',
+      'Accept': 'application/json'
     }
   });
-  if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
-  return await res.text();
-}
+  if (!res.ok) throw new Error(`Gateway fetch failed: ${res.status}`);
+  const json = await res.json();
 
-async function run() {
-  const parser = new Parser();
-  const xml = await fetchRss();
-  const feed = await parser.parseString(xml);
+  if (!json || !Array.isArray(json.items)) {
+    throw new Error('Gateway returned unexpected format');
+  }
 
   let tried = 0, inserted = 0;
 
-  for (const item of feed.items ?? []) {
+  for (const item of json.items) {
     tried++;
     const title = item.title ?? '';
     const url = item.link ?? '';
     if (!url) continue;
 
+    // Craigslist sometimes sticks price in title like "$50 steel plate"
     const priceMatch = title.match(/\$(\d+[\.,]?\d*)/);
     const price = priceMatch ? Number(priceMatch[1].replace(',', '')) : null;
+
     const hash = crypto.createHash('sha256').update(`craigslist|${url}`).digest('hex');
 
     const { error } = await supabase.from('listings').insert({
