@@ -3,20 +3,30 @@ name: Scrape Craigslist -> Supabase
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */4 * * *"  # every 4 hours UTC
+    - cron: "0 */4 * * *" # every 4 hours UTC
+
+concurrency:
+  group: scrape-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: '20.18.1'
+          cache: 'npm'
 
-      - run: npm ci
+      - name: Install deps
+        run: npm ci
 
+      # Craigslist often blocks; we try but don't fail the whole job
       - name: Craigslist (best-effort; ignore failure)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -24,9 +34,18 @@ jobs:
           CITY: Calhoun
         run: node scripts/scrape_craigslist.mjs || echo "craigslist blocked; continuing"
 
+      # OfferUp is our primary source
       - name: OfferUp (primary)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE: ${{ secrets.SUPABASE_SERVICE_ROLE }}
           CITY: Calhoun
         run: node scripts/scrape_offerup.mjs
+
+      # eBay RSS as secondary; don't fail the job if eBay flakes
+      - name: eBay RSS (secondary)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE: ${{ secrets.SUPABASE_SERVICE_ROLE }}
+          CITY: Calhoun
+        run: node scripts/scrape_ebay.mjs || echo "ebay failed; continuing"
