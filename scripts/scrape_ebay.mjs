@@ -1,5 +1,4 @@
 // scripts/scrape_ebay.mjs
-import { load } from 'cheerio';
 import crypto from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 
@@ -7,8 +6,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const CITY = process.env.CITY || 'Calhoun';
 
-// eBay HTML search (newly listed, 60 per page, around Calhoun ZIP 30701)
-// Tweak keywords anytime.
+// eBay HTML search (newly listed, zip 30701 within ~75mi)
 const SEARCH_URL =
   'https://www.ebay.com/sch/i.html?_nkw=metal+scrap+offcuts+drops&_sop=10&_ipg=60&_stpos=30701&_sadis=75&rt=nc';
 
@@ -36,30 +34,31 @@ async function run() {
   if (!res.ok) throw new Error(`eBay fetch failed: ${res.status}`);
 
   const html = await res.text();
-  const $ = load(html);
 
-  let items = [];
-  $('#srp-river-results li.s-item').each((_i, el) => {
-    const a = $(el).find('a.s-item__link');
-    const url = a.attr('href');
-    const title = $(el).find('.s-item__title').text().trim();
-    const price = parsePrice($(el).find('.s-item__price').text());
+  // Very forgiving regex: anchor with s-item__link, then nearby title/price snippets
+  const items = [];
+  const re = /<a[^>]*class="[^"]*s-item__link[^"]*"[^>]*href="([^"]+)"[^>]*>(?:[\s\S]*?)<\/a>[\s\S]*?s-item__title[^>]*>([^<]{3,120})<\/[^>]+[\s\S]*?s-item__price[^>]*>([^<]{1,40})</gi;
 
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const url = m[1];
+    const title = m[2].replace(/&amp;/g,'&').trim();
+    const price = parsePrice(m[3]);
     if (url && title && url.includes('/itm/')) {
-      items.push({ title, url, price });
+      items.push({ url, title, price });
     }
-  });
+  }
 
-  // dedupe by URL
+  // Dedupe by URL
   const seen = new Set();
-  items = items.filter(x => {
+  const unique = items.filter(x => {
     if (!x.url || seen.has(x.url)) return false;
     seen.add(x.url);
     return true;
   });
 
   let tried = 0, inserted = 0;
-  for (const it of items) {
+  for (const it of unique) {
     tried++;
     const hash = crypto.createHash('sha256').update(`ebay|${it.url}`).digest('hex');
 
@@ -72,6 +71,7 @@ async function run() {
       price: it.price ?? null,
       hash
     });
+
     if (!error) inserted++;
   }
 
