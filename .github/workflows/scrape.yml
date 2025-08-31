@@ -1,0 +1,31 @@
+name: Scrape Craigslist -> Supabase
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 */4 * * *"  # every 4 hours (UTC)
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.18.1'
+
+      - name: Install deps (only what we need)
+        run: |
+          npm init -y
+          npm pkg set type="module"
+          npm i rss-parser @supabase/supabase-js
+
+      - name: Run scraper
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE: ${{ secrets.SUPABASE_SERVICE_ROLE }}
+          CITY: Calhoun
+        run: node scripts/scrape_craigslist.mjs
