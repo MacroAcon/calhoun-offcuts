@@ -20,8 +20,7 @@ function mmToIn(mm) {
   const n = Number(mm);
   return Number.isFinite(n) ? +(n / 25.4).toFixed(4) : undefined;
 }
-function parseThickness(t) {
-  // 1/4", 0.25in, 6mm, 3/8 in
+function parseThicknessStr(t) {
   const mFrac = t.match(/(\d+\/\d+)\s*(?:in|inch|")\b/i);
   if (mFrac) return fracToNum(mFrac[1]);
   const mDec = t.match(/(\d+(?:\.\d+)?)\s*(?:in|inch|")\b/i);
@@ -30,16 +29,16 @@ function parseThickness(t) {
   if (mMM) return mmToIn(mMM[1]);
   return undefined;
 }
-function normalizeTitle(title) {
+function normalizeTitle(title = '') {
   const t = title.toLowerCase();
 
   const material =
     (t.match(/\b(a36|1018|1045|tool\s*steel|mild\s*steel|stainless|316|304|aluminum|aluminium|6061|5052|brass|copper)\b/) || [])[1];
 
   const shape =
-    (t.match(/\b(plate|sheet|bar|flat\s*bar|round|rod|square|tube|square\s*tube|rectangular\s*tube|pipe|angle|channel|drops?|offcuts?)\b/) || [])[1];
+    (t.match(/\b(plate|sheet|flat\s*bar|bar|round|rod|square|tube|square\s*tube|rectangular\s*tube|pipe|angle|channel|drops?|offcuts?)\b/) || [])[1];
 
-  const thickness_in = parseThickness(t);
+  const thickness_in = parseThicknessStr(t);
 
   return {
     material: material?.replace(/\s+/g, ' '),
@@ -49,30 +48,26 @@ function normalizeTitle(title) {
 }
 
 async function run() {
-  // normalize most recent set (last 3 days) plus any rows missing fields
-  const since = new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString();
-
-  const { data: recent, error: e1 } = await supabase
+  // Grab the most recent 1000 rows and normalize locally (keeps logic simple & reliable)
+  const { data: rows, error } = await supabase
     .from('listings')
-    .select('id,title,material,shape,thickness_in')
-    .or(`gte.first_seen.${since},is.material.null,is.shape.null,is.thickness_in.null`)
+    .select('id,title,material,shape,thickness_in,first_seen')
     .order('first_seen', { ascending: false })
-    .limit(800);
+    .limit(1000);
 
-  if (e1) {
-    console.error(JSON.stringify({ ok: false, stage: 'select', error: e1.message }));
+  if (error) {
+    console.error(JSON.stringify({ ok: false, stage: 'select', error: error.message }));
     process.exit(1);
   }
 
   let tried = 0, updated = 0;
-  for (const row of recent ?? []) {
+  for (const row of rows ?? []) {
     tried++;
-    const n = normalizeTitle(row.title || '');
-    // Only update if we found something new
+    const n = normalizeTitle(row.title);
     const patch = {};
     if (n.material && !row.material) patch.material = n.material;
     if (n.shape && !row.shape) patch.shape = n.shape;
-    if (n.thickness_in && !row.thickness_in) patch.thickness_in = n.thickness_in;
+    if (typeof n.thickness_in === 'number' && !row.thickness_in) patch.thickness_in = n.thickness_in;
 
     if (Object.keys(patch).length > 0) {
       const { error: upErr } = await supabase.from('listings').update(patch).eq('id', row.id);
